@@ -44,6 +44,8 @@ SOFTWARE.
 """
 import bpy
 from mathutils import Vector, Matrix
+
+########################## Utility functions ##########################
 bl_info = {
     "name": "AlignTools",
     "author": "Elie Michel",
@@ -55,10 +57,6 @@ bl_info = {
     "wiki_url": "",
     "category": "Mesh",
 }
-
-
-########################## Utility functions ##########################
-
 
 class ContextError(Exception):
     def __init__(self, message):
