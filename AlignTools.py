@@ -42,30 +42,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-
+import bpy
+from mathutils import Vector, Matrix
 bl_info = {
     "name": "AlignTools",
     "author": "Elie Michel",
     "version": (1, 1),
-    "blender": (2, 79, 0),
+    "blender": (2, 83, 0),
     "location": "View3D > Mesh > AutoAlign",
     "description": "Tools for automatic object alignment",
     "warning": "",
     "wiki_url": "",
     "category": "Mesh",
-    }
+}
 
-
-import bpy
-from bpy.props import FloatVectorProperty, EnumProperty
-from mathutils import Vector, Matrix
-import bmesh
 
 ########################## Utility functions ##########################
+
 
 class ContextError(Exception):
     def __init__(self, message):
         self.message = message
+
 
 def getEdgePoints(context):
     """Get the  position of the vertices of the selected edge in world space"""
@@ -81,8 +79,9 @@ def getEdgePoints(context):
 
     edge = selected_edges[0]
     p = [mesh.vertices[v].co for v in edge.vertices]
-    p = [obj.matrix_world * u for u in p]
+    p = [obj.matrix_world @ u for u in p]
     return p
+
 
 def applyAlignmentMatrix(context, p, mat):
     obj = context.object
@@ -92,7 +91,8 @@ def applyAlignmentMatrix(context, p, mat):
     t1 = Matrix.Translation(c)
     t2 = Matrix.Translation(-c)
 
-    obj.matrix_world = t1 * mat * t2 * obj.matrix_world
+    obj.matrix_world = t1 @ mat @ t2 @ obj.matrix_world
+
 
 def getMeanFaceNormal(context):
     """Get the normal of the selected face in world space"""
@@ -100,7 +100,6 @@ def getMeanFaceNormal(context):
     # Get editmode changes
     obj.update_from_editmode()
     mesh = obj.data
-    #bm = bmesh.from_edit_mesh(mesh)
 
     selected_polygons = [poly for poly in mesh.polygons if poly.select]
 
@@ -109,15 +108,16 @@ def getMeanFaceNormal(context):
 
     n = sum([Vector(poly.normal) for poly in selected_polygons], Vector([0, 0, 0]))
     n.normalize()
-    n = obj.matrix_world.to_3x3() * n
+    n = obj.matrix_world.to_3x3() @ n
     return n
+
 
 def setAxis(context, mat):
     """Set selected object local axis orientation to match mat"""
     # Prevent origin from changing
-    origin = context.object.matrix_world * Vector([0, 0, 0])
-    mat = Matrix.Translation(origin) * mat
-    
+    origin = context.object.matrix_world @ Vector([0, 0, 0])
+    mat = Matrix.Translation(origin) @ mat
+
     # Apply the compensating transform to the mesh data
     bpy.ops.object.mode_set(mode='OBJECT')
     obj = context.object
@@ -131,7 +131,8 @@ def setAxis(context, mat):
 
 ########################## Operators ##########################
 
-## A. Ops that rotate mesh
+# A. Ops that rotate mesh
+
 
 class AlignEdgeOp(bpy.types.Operator):
     """Base class for operators that rotates the whole mesh to align the
@@ -140,7 +141,7 @@ class AlignEdgeOp(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         return context.active_object.mode == 'EDIT' and context.object.type == 'MESH'
-    
+
 
 class AlignEdgeToXOperator(AlignEdgeOp, bpy.types.Operator):
     """Align the selected edge to the world X axis of
@@ -165,6 +166,7 @@ class AlignEdgeToXOperator(AlignEdgeOp, bpy.types.Operator):
         applyAlignmentMatrix(context, p, mat)
         return {'FINISHED'}
 
+
 class AlignEdgeToYOperator(AlignEdgeOp, bpy.types.Operator):
     """Align the selected edge to the world Y axis of
     the scene by rotating the whole mesh."""
@@ -184,9 +186,10 @@ class AlignEdgeToYOperator(AlignEdgeOp, bpy.types.Operator):
         x = y.cross(z).normalized()
         z = x.cross(y).normalized()
         mat = Matrix((x, y, z)).to_4x4()
-        
+
         applyAlignmentMatrix(context, p, mat)
         return {'FINISHED'}
+
 
 class AlignEdgeToZOperator(AlignEdgeOp, bpy.types.Operator):
     """Align the selected edge to the world Z axis of
@@ -208,11 +211,12 @@ class AlignEdgeToZOperator(AlignEdgeOp, bpy.types.Operator):
         y = z.cross(x).normalized()
         x = y.cross(z).normalized()
         mat = Matrix((x, y, z)).to_4x4()
-        
+
         applyAlignmentMatrix(context, p, mat)
         return {'FINISHED'}
 
-## B. Ops that rotate local object axis
+# B. Ops that rotate local object axis
+
 
 class AlignObjectOp(bpy.types.Operator):
     """Align the current object's local axis to the selected face. If several
@@ -223,6 +227,7 @@ class AlignObjectOp(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         return context.active_object.mode == 'EDIT' and context.object.type == 'MESH'
+
 
 class AlignObjectXToFace(AlignObjectOp):
     bl_idname = "transform.align_object_x_to_face"
@@ -245,6 +250,7 @@ class AlignObjectXToFace(AlignObjectOp):
         setAxis(context, mat)
         return {'FINISHED'}
 
+
 class AlignObjectYToFace(AlignObjectOp):
     bl_idname = "transform.align_object_y_to_face"
     bl_label = "Align Object Y Axis to Face"
@@ -265,6 +271,7 @@ class AlignObjectYToFace(AlignObjectOp):
 
         setAxis(context, mat)
         return {'FINISHED'}
+
 
 class AlignObjectZToFace(AlignObjectOp):
     bl_idname = "transform.align_object_z_to_face"
@@ -287,12 +294,13 @@ class AlignObjectZToFace(AlignObjectOp):
         setAxis(context, mat)
         return {'FINISHED'}
 
-########################## Panel ##########################
+# ----------------- Panel -------------------
+
 
 class AutoAlignPanel(bpy.types.Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
-    bl_category = "Tools"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "View"
     bl_context = "mesh_edit"
     bl_label = "Auto Align"
 
@@ -319,6 +327,7 @@ def register():
     bpy.utils.register_class(AlignObjectZToFace)
     bpy.utils.register_class(AutoAlignPanel)
 
+
 def unregister():
     bpy.utils.unregister_class(AlignEdgeToXOperator)
     bpy.utils.unregister_class(AlignEdgeToYOperator)
@@ -328,6 +337,6 @@ def unregister():
     bpy.utils.unregister_class(AlignObjectZToFace)
     bpy.utils.unregister_class(AutoAlignPanel)
 
+
 if __name__ == "__main__":
     register()
-
